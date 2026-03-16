@@ -1,119 +1,220 @@
-console.log("Email Writer Extension - Content Script Loaded");
+console.log("Email Writer Extension Loaded");
 
 function createAIButton() {
-   const button = document.createElement('div');
-   button.className = 'T-I J-J5-Ji aoO v7 T-I-atl L3';
-   button.style.marginRight = '8px';
-   button.innerHTML = 'AI Reply';
-   button.setAttribute('role','button');
-   button.setAttribute('data-tooltip','Generate AI Reply');
-   return button;
+
+    const button = document.createElement("button");
+
+    button.className = "ai-reply-button";
+    button.innerText = "AI Reply";
+
+    /* Button Styling */
+    button.style.height = "32px";
+    button.style.padding = "0 14px";
+    button.style.fontSize = "14px";
+    button.style.border = "1px solid #dadce0";
+    button.style.borderRadius = "6px";
+    button.style.background = "#f1f3f4";
+    button.style.cursor = "pointer";
+    button.style.marginRight = "8px";
+
+    return button;
+}
+
+function createToneSelector() {
+
+    const select = document.createElement("select");
+
+    select.className = "ai-tone-selector";
+
+    /* SAME SIZE AS BUTTON */
+    select.style.height = "32px";
+    select.style.padding = "0 10px";
+    select.style.fontSize = "14px";
+
+    select.style.border = "1px solid #dadce0";
+    select.style.borderRadius = "6px";
+    select.style.background = "white";
+
+    select.style.marginRight = "8px";
+    select.style.cursor = "pointer";
+
+    const tones = [
+        "professional",
+        "friendly",
+        "formal",
+        "casual",
+        "apologetic"
+    ];
+
+    tones.forEach(tone => {
+
+        const option = document.createElement("option");
+
+        option.value = tone;
+        option.textContent = tone;
+
+        select.appendChild(option);
+
+    });
+
+    return select;
 }
 
 function getEmailContent() {
+
     const selectors = [
-        '.h7',
-        '.a3s.aiL',
-        '.gmail_quote',
-        '[role="presentation"]'
+        ".h7",
+        ".a3s.aiL",
+        ".gmail_quote",
+        "[role='presentation']"
     ];
+
     for (const selector of selectors) {
+
         const content = document.querySelector(selector);
+
         if (content) {
             return content.innerText.trim();
         }
-        return '';
+
     }
+
+    return "";
 }
 
-
 function findComposeToolbar() {
+
     const selectors = [
-        '.btC',
-        '.aDh',
-        '[role="toolbar"]',
-        '.gU.Up'
+        ".btC",
+        ".aDh",
+        "[role='toolbar']",
+        ".gU.Up"
     ];
+
     for (const selector of selectors) {
+
         const toolbar = document.querySelector(selector);
+
         if (toolbar) {
             return toolbar;
         }
-        return null;
+
     }
+
+    return null;
 }
 
 function injectButton() {
-    const existingButton = document.querySelector('.ai-reply-button');
-    if (existingButton) existingButton.remove();
+
+    if (document.querySelector(".ai-reply-button")) return;
 
     const toolbar = findComposeToolbar();
+
     if (!toolbar) {
+
         console.log("Toolbar not found");
         return;
+
     }
 
-    console.log("Toolbar found, creating AI button");
-    const button = createAIButton();
-    button.classList.add('ai-reply-button');
+    console.log("Injecting AI controls");
 
-    button.addEventListener('click', async () => {
+    const aiButton = createAIButton();
+    const toneSelector = createToneSelector();
+
+    aiButton.addEventListener("click", async () => {
+
         try {
-            button.innerHTML = 'Generating...';
-            button.disabled = true;
+
+            aiButton.innerText = "Generating...";
+            aiButton.style.pointerEvents = "none";
+            aiButton.style.opacity = "0.6";
 
             const emailContent = getEmailContent();
-            const response = await fetch('http://localhost:8080/api/email/generate', {
-                method: 'POST',
+            const tone = toneSelector.value;
+
+            const response = await fetch("http://localhost:8080/api/email/generate", {
+
+                method: "POST",
+
                 headers: {
-                    'Content-Type': 'application/json',
+                    "Content-Type": "application/json"
                 },
+
                 body: JSON.stringify({
                     emailContent: emailContent,
-                    tone: "professional"
+                    tone: tone
                 })
+
             });
 
             if (!response.ok) {
-                throw new Error('API Request Failed');
+                throw new Error("API Request Failed");
             }
 
             const generatedReply = await response.text();
-            const composeBox = document.querySelector('[role="textbox"][g_editable="true"]');
+
+            const composeBox = document.querySelector(
+                "div[role='textbox'][contenteditable='true']"
+            );
 
             if (composeBox) {
+
                 composeBox.focus();
-                document.execCommand('insertText', false, generatedReply);
+                composeBox.innerText = generatedReply;
+
             } else {
-                console.error('Compose box was not found');
+
+                console.error("Compose box not found");
+
             }
+
         } catch (error) {
+
             console.error(error);
-            alert('Failed to generate reply');
+            alert("Failed to generate reply");
+
         } finally {
-            button.innerHTML = 'AI Reply';
-            button.disabled =  false;
+
+            aiButton.innerText = "AI Reply";
+            aiButton.style.pointerEvents = "auto";
+            aiButton.style.opacity = "1";
+
         }
+
     });
 
-    toolbar.insertBefore(button, toolbar.firstChild);
+    toolbar.insertBefore(aiButton, toolbar.firstChild);
+    toolbar.insertBefore(toneSelector, toolbar.firstChild);
 }
 
 const observer = new MutationObserver((mutations) => {
-    for(const mutation of mutations) {
+
+    for (const mutation of mutations) {
+
         const addedNodes = Array.from(mutation.addedNodes);
+
         const hasComposeElements = addedNodes.some(node =>
-            node.nodeType === Node.ELEMENT_NODE && 
-            (node.matches('.aDh, .btC, [role="dialog"]') || node.querySelector('.aDh, .btC, [role="dialog"]'))
+            node.nodeType === Node.ELEMENT_NODE &&
+            (
+                node.matches(".aDh, .btC, [role='dialog']") ||
+                node.querySelector(".aDh, .btC, [role='dialog']")
+            )
         );
 
         if (hasComposeElements) {
-            console.log("Compose Window Detected");
-            setTimeout(injectButton, 500);
-        }
-    }
-});
 
+            console.log("Compose Window Detected");
+
+            setTimeout(() => {
+                injectButton();
+            }, 800);
+
+        }
+
+    }
+
+});
 
 observer.observe(document.body, {
     childList: true,
